@@ -130,16 +130,28 @@ async function harvestGoogleMaps(keyword, location, maxResults) {
 
         let rating = 0
         let reviewsCount = 0
-        const ratingElem = await card.$("span.MW4etd, div.F7nice span[aria-hidden='true']")
-        if (ratingElem) {
-          try { rating = parseFloat((await ratingElem.innerText()).replace(',', '.').trim()) } catch {}
-        }
-        const revElem = await card.$('span.UY7F9, div.F7nice span:nth-child(2)')
-        if (revElem) {
-          try {
-            const digits = (await revElem.innerText()).replace(/[^\d]/g, '')
-            if (digits) reviewsCount = parseInt(digits, 10)
-          } catch {}
+        // Primary: the rating+review count both live in one aria-label on the star-icon span,
+        // e.g. aria-label="4.8 stars 237 Reviews" — far more stable than nested class names
+        // which Google renders differently across locales/card layouts.
+        const ratingImgElem = await card.$("span[role='img'][aria-label]")
+        const ariaLabel = ratingImgElem ? (await ratingImgElem.getAttribute('aria-label')) || '' : ''
+        const ariaMatch = ariaLabel.match(/([\d.,]+)\s*stars?\s*([\d,]+)\s*Reviews?/i)
+        if (ariaMatch) {
+          rating = parseFloat(ariaMatch[1].replace(',', '.'))
+          reviewsCount = parseInt(ariaMatch[2].replace(/\D/g, ''), 10)
+        } else {
+          // Fallback: older class-based selectors (kept for resilience if Google changes markup again)
+          const ratingElem = await card.$("span.MW4etd, div.F7nice span[aria-hidden='true']")
+          if (ratingElem) {
+            try { rating = parseFloat((await ratingElem.innerText()).replace(',', '.').trim()) } catch {}
+          }
+          const revElem = await card.$('span.UY7F9, div.F7nice span:nth-child(2)')
+          if (revElem) {
+            try {
+              const digits = (await revElem.innerText()).replace(/[^\d]/g, '')
+              if (digits) reviewsCount = parseInt(digits, 10)
+            } catch {}
+          }
         }
 
         let website = ''

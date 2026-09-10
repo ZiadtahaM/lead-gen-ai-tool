@@ -9,6 +9,7 @@ import { auditUrl } from './auditor'
 import { normalizePhone, generatePitches, MARKET_CONFIGS, type Market } from './markets'
 import {
   insertLeadIfNew,
+  dedupeKeyExists,
   getOrCreateCursor,
   advanceCursor,
   getLeadStats,
@@ -82,6 +83,14 @@ export async function igniteRun(db: D1Database, input: IgniteRunInput): Promise<
 
     const phoneNormalized = normalizePhone(raw.phoneRaw, market)
     const dedupeKey = buildDedupeKey(raw.businessName, raw.city, phoneNormalized)
+
+    // Skip expensive audit/enrich work entirely for already-known duplicates —
+    // this is what makes repeated runs fast and avoids wasted outbound fetches.
+    if (await dedupeKeyExists(db, dedupeKey)) {
+      dupCount++
+      continue
+    }
+
     const { category, cleanedUrl } = classifyWebsite(raw.websiteRaw)
 
     let auditReport = null
@@ -179,6 +188,14 @@ export async function importRawLeads(
 
     const phoneNormalized = normalizePhone(raw.phoneRaw || '', market)
     const dedupeKey = buildDedupeKey(raw.businessName, raw.city, phoneNormalized)
+
+    // Skip expensive audit/enrich work entirely for already-known duplicates —
+    // this is what makes repeated scrapes fast and avoids wasted outbound fetches.
+    if (await dedupeKeyExists(db, dedupeKey)) {
+      dupCount++
+      continue
+    }
+
     const { category, cleanedUrl } = classifyWebsite(raw.websiteRaw || '')
 
     let auditReport = null

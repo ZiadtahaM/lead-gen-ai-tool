@@ -62,6 +62,13 @@ export interface NewLeadInput {
   dedupeKey: string
 }
 
+// Cheap existence check so callers can skip expensive work (e.g. forensic website audit fetches)
+// for leads that are already known duplicates, before doing any real work on them.
+export async function dedupeKeyExists(db: D1Database, dedupeKey: string): Promise<boolean> {
+  const row = await db.prepare('SELECT 1 FROM leads WHERE dedupe_key = ? LIMIT 1').bind(dedupeKey).first()
+  return !!row
+}
+
 // Returns true if actually inserted (i.e. a genuinely NEW lead), false if it already existed.
 export async function insertLeadIfNew(db: D1Database, lead: NewLeadInput): Promise<boolean> {
   const result = await db
