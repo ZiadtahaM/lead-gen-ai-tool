@@ -1,1 +1,37 @@
-h1 { font-family: Arial, Helvetica, sans-serif; }
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }
+
+.glass {
+  background: rgba(30, 41, 59, 0.6);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.market-btn.active {
+  outline: 3px solid #22d3ee;
+  transform: scale(1.03);
+}
+
+.scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+
+.badge-no-website { background: #ef4444; }
+.badge-social { background: #f59e0b; }
+.badge-real { background: #22c55e; }
+
+.status-QUEUED { color: #94a3b8; }
+.status-DISPATCHED { color: #38bdf8; }
+.status-REPLIED { color: #22c55e; }
+.status-CONVERTED { color: #a78bfa; }
+.status-BOUNCED { color: #ef4444; }
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.pulse-glow { animation: pulse-glow 1.6s ease-in-out infinite; }
+
+.tab-btn.active {
+  border-bottom: 2px solid #22d3ee;
+  color: #22d3ee;
+}
