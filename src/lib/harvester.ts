@@ -21,7 +21,15 @@ export interface RawLead {
 }
 
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
+// Public Overpass mirrors are individually rate-limited/flaky, so we try several
+// in order (each with its own short timeout) before giving up. overpass-api.de is
+// unreachable from some sandbox/edge networks entirely, kept last as a long-shot.
+const OVERPASS_URLS = [
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+  'https://overpass.openstreetmap.ru/api/interpreter',
+  'https://overpass-api.de/api/interpreter'
+]
 const APP_USER_AGENT = 'LeadEnginePROMAX/1.0 (contact: leads@genspark.local)'
 
 // Bilingual keyword -> OSM tag mapping. Broadens recall beyond exact name matches,
@@ -99,17 +107,37 @@ export async function harvestLive(
   }
 
   const query = buildOverpassQuery(keyword, geo.lat, geo.lon, radiusKm)
-  const resp = await fetch(OVERPASS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain', 'User-Agent': APP_USER_AGENT },
-    body: query
-  })
 
-  if (!resp.ok) {
-    return { leads: [], geocode: geo, radiusKmUsed: radiusKm, overpassElementCount: 0 }
+  // Free public Overpass mirrors are individually flaky/rate-limited, so we race
+  // ALL mirrors in parallel and take whichever responds first successfully.
+  // This is far faster and more resilient than trying them one at a time.
+  async function tryMirror(overpassUrl: string): Promise<any> {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 15000)
+    try {
+      const resp = await fetch(overpassUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain', 'User-Agent': APP_USER_AGENT },
+        body: query,
+        signal: controller.signal
+      })
+      if (!resp.ok) throw new Error(`Overpass mirror ${overpassUrl} returned ${resp.status}`)
+      return await resp.json()
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
-  const data = (await resp.json()) as any
+  let data: any = null
+  try {
+    data = await Promise.any(OVERPASS_URLS.map(tryMirror))
+  } catch {
+    data = null // all mirrors failed
+  }
+
+  if (!data) {
+    return { leads: [], geocode: geo, radiusKmUsed: radiusKm, overpassElementCount: 0 }
+  }
   const elements: any[] = data.elements || []
   const locFull = `${keyword} ${location}`.toLowerCase()
   const country = detectCountry(locFull)
