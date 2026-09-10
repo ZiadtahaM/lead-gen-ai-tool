@@ -9,7 +9,10 @@ const state = {
   queueSummary: null,
   filterCategory: 'all',
   searchTerm: '',
-  loading: false
+  loading: false,
+  scrapeJob: null,      // { id, status, ... } — active GitHub Actions real-scrape job
+  scrapePollTimer: null,
+  scrapeStartedAt: null
 }
 
 const MARKET_META = {
@@ -117,11 +120,57 @@ function renderIgnitionPanel() {
             class="w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm" />
         </div>
       </div>
-      <button id="btn-ignite" class="w-full bg-gradient-to-l from-cyan-500 to-emerald-500 hover:opacity-90 text-slate-900 font-bold py-3 rounded-xl transition">
-        <i class="fas fa-fire ml-2"></i> IGNITE RUN — جلب عملاء جدد حقيقيين الآن
-      </button>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <button id="btn-ignite" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded-xl transition">
+          <i class="fas fa-map-location-dot ml-2"></i> بحث سريع (OpenStreetMap)
+        </button>
+        <button id="btn-real-scrape" class="w-full bg-gradient-to-l from-cyan-500 to-emerald-500 hover:opacity-90 text-slate-900 font-bold py-3 rounded-xl transition" ${state.scrapeJob && state.scrapeJob.status === 'RUNNING' ? 'disabled' : ''}>
+          <i class="fas fa-fire ml-2"></i> ${state.scrapeJob && state.scrapeJob.status === 'RUNNING' ? 'جاري السحب من Google Maps الحي...' : 'IGNITE REAL — جوجل مابس حقيقي (GitHub Actions)'}
+        </button>
+      </div>
+      <p class="text-[11px] text-slate-500 mt-1">
+        <i class="fas fa-circle-info ml-1"></i>
+        "بحث سريع" فوري بس بيانات OpenStreetMap محدودة للمهن المحلية · "IGNITE REAL" بيشغّل متصفح حقيقي فاضي (كروميوم) على GitHub Actions يسحب من جوجل مابس فعليًا — بياخد 1-3 دقايق لكنه أدق بكتير.
+      </p>
       <p id="ignite-status" class="text-xs text-slate-400 mt-2"></p>
+      ${renderScrapeJobStatus()}
     </section>
+  `
+}
+
+function renderScrapeJobStatus() {
+  const job = state.scrapeJob
+  if (!job) return ''
+
+  const statusMap = {
+    PENDING: { label: 'قيد الانتظار...', cls: 'text-slate-400', icon: 'fa-hourglass-half' },
+    RUNNING: { label: 'جاري التشغيل — متصفح حقيقي شغال على GitHub Actions...', cls: 'text-cyan-300', icon: 'fa-spinner fa-spin' },
+    DONE: { label: 'تم بنجاح ✅', cls: 'text-emerald-400', icon: 'fa-circle-check' },
+    FAILED: { label: 'فشلت المهمة ❌', cls: 'text-red-400', icon: 'fa-circle-xmark' }
+  }
+  const s = statusMap[job.status] || statusMap.PENDING
+
+  let detail = ''
+  if (job.status === 'DONE') {
+    detail = `<div class="text-xs mt-1 text-slate-300">
+      عملاء جدد: <b class="text-emerald-400">${job.new_leads_count ?? 0}</b> ·
+      مكرر تم تجاهله: <b>${job.duplicates_skipped ?? 0}</b> ·
+      تم فحصهم فورينزيك: <b>${job.audited_count ?? 0}</b>
+    </div>`
+  } else if (job.status === 'FAILED') {
+    detail = `<div class="text-xs mt-1 text-red-300">${job.error_message || 'خطأ غير معروف'}</div>`
+  } else if (job.status === 'RUNNING' || job.status === 'PENDING') {
+    detail = `<div class="text-xs mt-1 text-slate-400">${job.keyword || ''} · ${job.location || ''} — بياخد عادة 1-3 دقايق، الصفحة بتحدّث نفسها لوحدها.</div>`
+  }
+
+  return `
+    <div id="scrape-job-box" class="mt-3 bg-slate-800/70 rounded-lg p-3 border border-slate-700">
+      <div class="flex items-center justify-between">
+        <span class="text-sm font-semibold ${s.cls}"><i class="fas ${s.icon} ml-1"></i> ${s.label}</span>
+        <span class="text-[10px] text-slate-500">Job: ${job.id}</span>
+      </div>
+      ${detail}
+    </div>
   `
 }
 
@@ -343,6 +392,7 @@ function wireEvents() {
   }
 
   $('#btn-ignite')?.addEventListener('click', onIgnite)
+  $('#btn-real-scrape')?.addEventListener('click', onRealScrape)
   $('#btn-audit')?.addEventListener('click', onAuditSingle)
   $('#btn-dispatch-next')?.addEventListener('click', onDispatchNext)
   $('#btn-clear-queue')?.addEventListener('click', onClearQueue)
@@ -385,6 +435,80 @@ async function onIgnite() {
     btn.disabled = false
     btn.innerHTML = '<i class="fas fa-fire ml-2"></i> IGNITE RUN — جلب عملاء جدد حقيقيين الآن'
   }
+}
+
+async function onRealScrape() {
+  const keyword = $('#input-keyword').value.trim()
+  const location = $('#input-location').value.trim()
+  const maxResults = parseInt($('#input-maxresults').value, 10) || 12
+  const statusEl = $('#ignite-status')
+
+  if (state.scrapeJob && (state.scrapeJob.status === 'RUNNING' || state.scrapeJob.status === 'PENDING')) {
+    toast('في مهمة سحب حقيقي شغالة فعلاً — استنى تخلص', 'warn')
+    return
+  }
+
+  try {
+    const res = await api('/scrape/dispatch', {
+      method: 'POST',
+      data: { market: state.market, keyword, location, maxResults }
+    })
+
+    if (!res.success) {
+      // Most common case: GitHub not connected yet (501)
+      toast(res.message, 'error')
+      statusEl.textContent = `❌ ${res.message}`
+      return
+    }
+
+    toast(res.message, 'success')
+    state.scrapeJob = { id: res.jobId, status: 'RUNNING', keyword, location }
+    state.scrapeStartedAt = Date.now()
+    render()
+    startScrapePolling(res.jobId)
+  } catch (err) {
+    toast('فشل الاتصال بمحرك السحب الحقيقي', 'error')
+  }
+}
+
+function startScrapePolling(jobId) {
+  if (state.scrapePollTimer) clearInterval(state.scrapePollTimer)
+
+  state.scrapePollTimer = setInterval(async () => {
+    try {
+      const res = await api(`/scrape/status/${jobId}`)
+      if (!res.success) return
+
+      state.scrapeJob = res.job
+
+      // Only re-render the job status box in place to avoid disrupting other UI state
+      const box = $('#scrape-job-box')
+      if (box) {
+        box.outerHTML = renderScrapeJobStatus()
+      }
+
+      if (res.job.status === 'DONE') {
+        clearInterval(state.scrapePollTimer)
+        state.scrapePollTimer = null
+        toast(`✅ السحب الحقيقي خلص! عملاء جدد: ${res.job.new_leads_count ?? 0}`, 'success')
+        await refreshAll()
+      } else if (res.job.status === 'FAILED') {
+        clearInterval(state.scrapePollTimer)
+        state.scrapePollTimer = null
+        toast(`❌ فشلت مهمة السحب: ${res.job.error_message || ''}`, 'error')
+        render()
+      } else {
+        // Safety timeout: if running for more than 6 minutes, stop polling
+        if (state.scrapeStartedAt && Date.now() - state.scrapeStartedAt > 6 * 60 * 1000) {
+          clearInterval(state.scrapePollTimer)
+          state.scrapePollTimer = null
+          toast('المهمة طولت أكتر من المتوقع — تحقق من GitHub Actions يدويًا', 'warn')
+        }
+      }
+    } catch (err) {
+      console.error('poll error', err)
+    }
+  }, 4000)
 }
 
 async function onAuditSingle() {
@@ -460,6 +584,23 @@ async function onMarkReplied(id) {
   await refreshAll()
 }
 
+async function resumeActiveScrapeJobIfAny() {
+  try {
+    const res = await api('/scrape/recent')
+    const jobs = res.jobs || []
+    const active = jobs.find(j => j.status === 'RUNNING' || j.status === 'PENDING')
+    if (active) {
+      state.scrapeJob = active
+      state.scrapeStartedAt = Date.now()
+      render()
+      startScrapePolling(active.id)
+    }
+  } catch (err) {
+    // /api/scrape/recent may not exist yet or GitHub not configured — ignore silently
+  }
+}
+
 // Initial boot
 render()
 refreshAll()
+resumeActiveScrapeJobIfAny()

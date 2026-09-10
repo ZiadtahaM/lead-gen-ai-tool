@@ -162,6 +162,76 @@ export async function igniteRun(db: D1Database, input: IgniteRunInput): Promise<
   }
 }
 
+// Imports raw leads harvested by the GitHub-Actions Playwright scraper (real Google Maps data).
+// Runs the exact same triage -> audit -> enrich -> dedupe-insert pipeline as igniteRun,
+// just skipping the harvesting step since the data was already fetched externally.
+export async function importRawLeads(
+  db: D1Database,
+  market: Market,
+  rawLeads: RawLead[]
+): Promise<{ newLeadsCount: number; duplicatesSkipped: number; auditedCount: number }> {
+  let newCount = 0
+  let dupCount = 0
+  let auditedCount = 0
+
+  for (const raw of rawLeads) {
+    if (!raw.businessName) continue
+
+    const phoneNormalized = normalizePhone(raw.phoneRaw || '', market)
+    const dedupeKey = buildDedupeKey(raw.businessName, raw.city, phoneNormalized)
+    const { category, cleanedUrl } = classifyWebsite(raw.websiteRaw || '')
+
+    let auditReport = null
+    let weaknessScore = category === 'NO_WEBSITE' ? 100 : 60
+    if (category === 'REAL_WEBSITE') {
+      auditReport = await auditUrl(cleanedUrl)
+      weaknessScore = auditReport.weaknessScore
+      auditedCount++
+    }
+
+    const pitchScript = generatePitches(raw.businessName, raw.category || '', raw.city || '', category, auditReport, market)
+
+    const emailHarvested = auditReport?.extractedEmails?.[0] || ''
+    const whatsAppUrl = phoneNormalized
+      ? `https://wa.me/${phoneNormalized.replace(/\D/g, '')}?text=${encodeURIComponent(pitchScript.whatsappMessage)}`
+      : ''
+    const telUrl = phoneNormalized ? `tel:${phoneNormalized}` : ''
+
+    const leadInput: NewLeadInput = {
+      id: raw.id || dedupeKey,
+      osmId: raw.id,
+      businessName: raw.businessName,
+      category: raw.category || '',
+      city: raw.city || '',
+      country: raw.country || '',
+      address: raw.address || '',
+      phoneRaw: raw.phoneRaw || '',
+      phoneNormalized,
+      websiteRaw: raw.websiteRaw || '',
+      websiteCleaned: cleanedUrl,
+      websiteCategory: category,
+      market,
+      rating: raw.rating || 0,
+      reviewsCount: raw.reviewsCount || 0,
+      googleMapsUrl: raw.googleMapsUrl || '',
+      source: raw.source || 'live_google_maps_github_actions',
+      weaknessScore,
+      auditReport,
+      pitchScript,
+      emailHarvested,
+      whatsAppUrl,
+      telUrl,
+      dedupeKey
+    }
+
+    const wasInserted = await insertLeadIfNew(db, leadInput)
+    if (wasInserted) newCount++
+    else dupCount++
+  }
+
+  return { newLeadsCount: newCount, duplicatesSkipped: dupCount, auditedCount }
+}
+
 export async function auditSingleUrl(url: string, market: Market, businessName = 'Target Business') {
   const report = await auditUrl(url)
   const triageCat = report.isOnline ? 'REAL_WEBSITE' : 'NO_WEBSITE'

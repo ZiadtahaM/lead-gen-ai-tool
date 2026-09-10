@@ -1,0 +1,12 @@
+{
+  "name": "lead-engine-scraper",
+  "type": "module",
+  "private": true,
+  "description": "Real headless Google Maps scraper — runs only inside GitHub Actions (Chromium cannot run on Cloudflare Workers). Kept isolated from the main webapp so Playwright is never bundled into the Worker.",
+  "scripts": {
+    "scrape": "node scrape.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  }
+}
