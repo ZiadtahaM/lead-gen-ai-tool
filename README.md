@@ -15,9 +15,9 @@
   - **Single dashboard UI**: one page, RTL Arabic-first, market switcher, live stats, leads list with filters/search, outreach queue — no manual script running, no PowerShell.
 
 ## URLs
+- **Production**: https://lead-engine-pro-max.pages.dev ✅ **LIVE**
+- **GitHub repo**: https://github.com/ZiadtahaM/lead-gen-ai-tool ✅ **Connected**
 - **Local dev**: http://localhost:3000 (sandbox preview URL provided by the environment)
-- **Production**: _not yet deployed — pending Cloudflare API token setup (see Deployment section)_
-- **GitHub repo**: _not yet connected — pending GitHub authorization (see Deployment section)_
 
 ## Data Architecture
 
@@ -100,12 +100,13 @@ already-known businesses is near-instant and makes zero extra outbound HTTP call
 
 ## Deployment status
 - **Platform**: Cloudflare Pages + Workers (Hono framework)
-- **Local dev**: ✅ Running via PM2 + `wrangler pages dev --local` with a local D1 SQLite database. All endpoints verified working, including a live end-to-end test against real Google Maps (Miami plumbers) with correct phone normalization, forensic audit, pitch generation, and dedup.
-- **Production deploy**: ❌ Not yet deployed. Requires:
-  1. A Cloudflare API token (Deploy tab in the sidebar) to create the real production D1 database and deploy.
-  2. GitHub authorization (#github tab in the sidebar) to push this repo and configure the Actions secrets below.
-- **Required secrets once both are connected**:
-  - Cloudflare Pages env vars: `GITHUB_TOKEN` (a PAT with `repo` scope for triggering `repository_dispatch`), `GITHUB_REPO` (`owner/repo`), `IMPORT_TOKEN` (shared secret, self-generated).
-  - GitHub Actions repo secrets: `LEAD_ENGINE_CALLBACK_URL` (`https://<your-pages-domain>/api/scrape/import`), `LEAD_ENGINE_IMPORT_TOKEN` (must match Cloudflare's `IMPORT_TOKEN`).
+- **Production**: ✅ **LIVE** at https://lead-engine-pro-max.pages.dev
+  - Real production D1 database (`webapp-production`), migrations applied to the remote database.
+  - GitHub repo connected: https://github.com/ZiadtahaM/lead-gen-ai-tool (branch `main`).
+  - GitHub Actions workflow (`.github/workflows/scrape.yml`) live and verified — a real end-to-end run completed successfully (dashboard → GitHub API dispatch → real headless Chromium on GitHub Actions → live Google Maps scrape → authenticated callback → D1 persist) in ~52 seconds, harvesting 6 real Miami plumbing businesses with correct phone/website/rating/reviews data, full forensic audits, and personalized pitch scripts.
+- **Configured secrets**:
+  - Cloudflare Pages (production env): `GITHUB_TOKEN` (PAT with `repo`+`workflow` scope), `GITHUB_REPO` = `ZiadtahaM/lead-gen-ai-tool`, `IMPORT_TOKEN` (shared secret).
+  - GitHub Actions repo secrets: `LEAD_ENGINE_CALLBACK_URL` = `https://lead-engine-pro-max.pages.dev/api/scrape/import`, `LEAD_ENGINE_IMPORT_TOKEN` (matches Cloudflare's `IMPORT_TOKEN`).
+- **Local dev**: ✅ Also runnable via PM2 + `wrangler pages dev --local` with a local D1 SQLite database, for iteration before pushing.
 - **Tech stack**: Hono + TypeScript (Worker) · Cloudflare D1 (SQLite) · vanilla JS dashboard (Tailwind CDN) · Node + Playwright scraper (GitHub Actions only, never bundled into the Worker).
-- **Last updated**: 2026-09-10
+- **Last updated**: 2026-09-11
