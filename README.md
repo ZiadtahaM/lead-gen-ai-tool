@@ -106,7 +106,7 @@ already-known businesses is near-instant and makes zero extra outbound HTTP call
   - GitHub Actions workflow (`.github/workflows/scrape.yml`) live and verified — a real end-to-end run completed successfully (dashboard → GitHub API dispatch → real headless Chromium on GitHub Actions → live Google Maps scrape → authenticated callback → D1 persist) in ~52 seconds, harvesting 6 real Miami plumbing businesses with correct phone/website/rating/reviews data, full forensic audits, and personalized pitch scripts.
 - **Configured secrets**:
   - Cloudflare Pages (production env): `GITHUB_TOKEN` (PAT with `repo`+`workflow` scope), `GITHUB_REPO` = `ZiadtahaM/lead-gen-ai-tool`, `IMPORT_TOKEN` (shared secret).
-  - GitHub Actions repo secrets: `LEAD_ENGINE_CALLBACK_URL` = `https://lead-engine-pro-max.pages.dev/api/scrape/import`, `LEAD_ENGINE_IMPORT_TOKEN` (matches Cloudflare's `IMPORT_TOKEN`).
+  - GitHub Actions repo secrets: `LEAD_ENGINE_CALLBACK_URL` = ``https://lead-engine-pro-max.pages.dev/api/scrape/import`, `LEAD_ENGINE_IMPORT_TOKEN` (matches Cloudflare's `IMPORT_TOKEN`).
 - **Local dev**: ✅ Also runnable via PM2 + `wrangler pages dev --local` with a local D1 SQLite database, for iteration before pushing.
 - **Tech stack**: Hono + TypeScript (Worker) · Cloudflare D1 (SQLite) · vanilla JS dashboard (Tailwind CDN) · Node + Playwright scraper (GitHub Actions only, never bundled into the Worker).
 - **Last updated**: 2026-09-11
